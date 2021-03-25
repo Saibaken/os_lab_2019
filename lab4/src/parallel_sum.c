@@ -35,13 +35,12 @@ int main(int argc, char **argv) {
    *	seed by command line arguments
    */
 
-  uint32_t threads_num = 0;
-  uint32_t array_size = 0;
-  uint32_t seed = 0;
-  pthread_t threads[threads_num];
+  uint32_t threads_num = -1;
+  uint32_t array_size = -1;
+  uint32_t seed = -1;
+  
+  int current_optind = optind ? optind : 1;
     while (1) {
-    int current_optind = optind ? optind : 1;
-
     static struct option options[] = {{"seed", required_argument, 0, 0},
                                       {"array_size", required_argument, 0, 0},
                                       {"threads_num", required_argument, 0, 0},
@@ -104,6 +103,7 @@ int main(int argc, char **argv) {
    * your code here
    * Generate array here
    */
+  pthread_t threads[threads_num];
   struct timeval start_time;
   gettimeofday(&start_time, NULL);
 
