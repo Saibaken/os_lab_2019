@@ -109,7 +109,11 @@ int main(int argc, char **argv) {
 
   int *array = malloc(sizeof(int) * array_size);
   GenerateArray(array, array_size, seed);
-
+  int i;
+  for (i = 0; i<array_size;i++)
+  {
+      printf("%d ", array[i]);
+  }
   int part_size = array_size / threads_num;
 
   struct SumArgs args[threads_num];
@@ -117,7 +121,7 @@ int main(int argc, char **argv) {
       args[i].begin = i*part_size;
       if (i != (threads_num - 1))
       {
-          args[i].end = (i+1) * part_size;          
+          args[i].end = args[i].begin + part_size;          
       }
       else
       {
@@ -143,7 +147,7 @@ int main(int argc, char **argv) {
 
   free(array);
 
-  printf("Total: %d\n", total_sum);
+ // printf("Total: %d\n", total_sum);
   printf("Elapsed time: %fms\n", elapsed_time);
 
   printf("Total: %d\n", total_sum);
