@@ -119,16 +119,18 @@ int main(int argc, char **argv) {
   struct SumArgs args[threads_num];
   for (uint32_t i = 0; i < threads_num; i++) {
       args[i].begin = i*part_size;
-      if (i != (threads_num - 1))
-      {
-          args[i].end = args[i].begin + part_size;          
-      }
-      else
-      {
-          args[i].end = array_size;
-      }
+      if (i != threads_num - 1)
+        {
+           args[i].begin=i*part_size; 
+           args[i].end = (i+1) * part_size;
+        }
+        else 
+        {
+           args[i].begin=i*part_size; 
+           args[i].end = args[i].begin+part_size;
+        }
         args[i].array = array;
-    if (pthread_create(&threads[i], NULL, ThreadSum, (void *)&args)) {
+    if (pthread_create(&threads[i], NULL, ThreadSum, (void *)&args[i])) {
       printf("Error: pthread_create failed!\n");
       return 1;
     }
