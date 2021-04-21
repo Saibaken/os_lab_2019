@@ -12,24 +12,119 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
+#include "libr.h"         ///
 #include <pthread.h>
 
-#include "libr.h"
+static pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;       ///
 
-pthread_mutex_t mut = PTHREAD_MUTEX_INITIALIZER;
+struct sockaddr_in create_sockaddr(uint16_t port, uint32_t s_addr);
 
-struct Server {
-  char ip[255];
-  uint64_t port;
-};
-
-typedef struct
-{
-  struct sockaddr_in server;
+struct fac_args {
   uint64_t begin;
   uint64_t end;
   uint64_t mod;
-} Arguments;
+};
+
+struct fac_server {
+  /* External */
+  char ip[255];
+  int port;
+
+  /* Internal */
+  pthread_t thread;
+  int socket;
+  struct fac_args args;
+};
+
+struct fac_server_list {
+  struct fac_server server;
+  struct fac_server_list* next;
+};
+
+struct client_data {
+  struct fac_args start_args;
+  struct fac_server_list* servers_list;
+  uint32_t servers_num;
+  uint64_t res;
+} client;
+
+struct Server {
+  char ip[255];
+  int port;
+};
+
+static void server_recieve_task(struct fac_server* server) {
+  int socket = server->socket;
+  char response[sizeof(uint64_t)];
+  if (recv(socket, response, sizeof(response), 0) < 0) {
+    fprintf(stderr, "Recieve failed\n");
+    return;
+  }
+  close(socket);
+
+  uint64_t answer = 0;
+  memcpy(&answer, response, sizeof(uint64_t));
+  printf("Answer: %llu\n", answer);
+
+  pthread_mutex_lock(&mtx);
+  client.res = MultModulo(client.res, answer, client.start_args.mod);
+  pthread_mutex_unlock(&mtx);
+}
+
+static void finalize_tasks() {
+ struct fac_server_list* iter = client.servers_list;
+  for (int i = 0; iter != NULL; ) {
+    if (i < client.servers_num)
+      if (pthread_join(iter->server.thread, NULL) != 0) {
+        printf("Error: cannot join %d\n", iter->server.thread);
+        exit(1);
+      }
+    printf("Thread %d joined\n", iter->server.thread);
+    struct fac_server_list* prev = iter;
+    iter = iter->next;
+    free(prev);
+    i++;
+  }
+}
+
+static struct fac_server_list* read_servers_file(const char* filename, int* len) {
+  if (access(filename, F_OK) == -1) {
+    printf("Error: file %s does not exist\n", filename);
+    return 0;
+  }
+
+  FILE* file = fopen(filename, "r");
+  if (!file) {
+    printf("Error: cannot open file %s\n", filename);
+    return 0;
+  }
+
+  struct fac_server_list* first = NULL;
+  int i;
+  for (i = 0 ;; ++i) {
+    struct fac_server_list* head = (struct fac_server_list*)malloc(sizeof(struct fac_server_list));
+    head->next = NULL;
+    int res = fscanf(file, "%s : %d", head->server.ip, &head->server.port);
+    if (res != 2) {
+      free(head);
+      if (res == EOF)  /* No more strings */
+        break;
+      fclose(file);  /* Else error occured */
+      return 0;
+    }
+    if (!first)
+      first = head;
+    else {
+      head->next = first->next;
+      first->next = head;
+    }
+  }
+
+  fclose(file);
+  *len = i;
+  return first;
+}
+
 
 bool ConvertStringToUI64(const char *str, uint64_t *val) {
   char *end = NULL;
@@ -46,53 +141,12 @@ bool ConvertStringToUI64(const char *str, uint64_t *val) {
   return true;
 }
 
-uint64_t SeverThread(Arguments *args)
-{
-  int sck = socket(AF_INET, SOCK_STREAM, 0);
-  if (sck < 0)
-  {
-    fprintf(stderr, "Socket creation failed!\n");
-    exit(1);
-  }
-
-  if (connect(sck, (struct sockaddr *)&args->server, sizeof(args->server)) < 0)
-  {
-    fprintf(stderr, "Connection failed\n");
-    exit(1);
-  }
-
-  char task[sizeof(uint64_t) * 3];
-  memcpy(task, &args->begin, sizeof(uint64_t));
-  memcpy(task + sizeof(uint64_t), &args->end, sizeof(uint64_t));
-  memcpy(task + 2 * sizeof(uint64_t), &args->mod, sizeof(uint64_t));
-
-  if (send(sck, task, sizeof(task), 0) < 0)
-  {
-    fprintf(stderr, "Send failed\n");
-    exit(1);
-  }
-
-  char response[sizeof(uint64_t)];
-  if (recv(sck, response, sizeof(response), 0) < 0)
-  {
-    fprintf(stderr, "Recieve failed\n");
-    exit(1);
-  }
-
-  uint64_t answer = 0;
-  memcpy(&answer, response, sizeof(uint64_t));
-  close(sck);
-  return answer;
-}
-
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
   uint64_t k = -1;
   uint64_t mod = -1;
   char servers[255] = {'\0'}; // TODO: explain why 255
 
-  while (true)
-  {
+  while (true) {
     int current_optind = optind ? optind : 1;
 
     static struct option options[] = {{"k", required_argument, 0, 0},
@@ -106,137 +160,130 @@ int main(int argc, char **argv)
     if (c == -1)
       break;
 
-    switch (c)
-    {
+    switch (c) {
+    case 0: {
+      switch (option_index) {
       case 0:
-      {
-        switch (option_index)
-        {
-          case 0:
-            ConvertStringToUI64(optarg, &k);
-            // TODO: my code here
-            if (k <= 0)
+        ConvertStringToUI64(optarg, &k);
+        // TODO: your code here
+        if (k <= 0)
             {
               printf("k must be a positive number\n");
               return 1;
             }
-            break;
-          case 1:
-            ConvertStringToUI64(optarg, &mod);
-            // TODO: my code here
-            if (mod <= 0)
+        break;
+      case 1:
+        ConvertStringToUI64(optarg, &mod);
+        // TODO: your code here
+        if (mod <= 0)
             {
               printf("mod must be a positive number\n");
               return 1;
             }
-            break;
-          case 2:
-            // TODO: my code here
-            memcpy(servers, optarg, strlen(optarg));
-            if (strlen(servers) == sizeof('\0'))
+        break;
+      case 2:
+        // TODO: your code here
+        memcpy(servers, optarg, strlen(optarg));
+        if (strlen(servers) == sizeof('\0'))
             {
               printf("servers must be a path to file with ip:port\n");
               return 1;
             }
-            break;
-          default:
-            printf("Index %d is out of options\n", option_index);
-        }
-      }
-      break;
-
-      case '?':
-        printf("Arguments error\n");
         break;
       default:
-        fprintf(stderr, "getopt returned character code 0%o?\n", c);
+        printf("Index %d is out of options\n", option_index);
+      }
+    } break;
+
+    case '?':
+      printf("Arguments error\n");
+      break;
+    default:
+      fprintf(stderr, "getopt returned character code 0%o?\n", c);
     }
   }
 
-  if (k == -1 || mod == -1 || !strlen(servers))
-  {
-  fprintf(stderr, "Using: %s --k 1000 --mod 5 --servers /path/to/file\n",
-          argv[0]);
-  return 1;
+  if (k == -1 || mod == -1 || !strlen(servers)) {
+    fprintf(stderr, "Using: %s --k 1000 --mod 5 --servers /path/to/file\n",
+            argv[0]);
+    return 1;
+  }
+  client.start_args.begin = 1;
+  client.start_args.end = k+1;
+  client.start_args.mod = mod;
+
+  // Получаем список серверов
+  if ((client.servers_list = read_servers_file(servers, &client.servers_num)) == 0) {
+    printf("Error: cannot read servers file\n");
+    return -1;
   }
 
-  unsigned int servers_num = 0;
-  struct Server *to;
-  // TODO: delete this and parallel work between servers
-  FILE* f = fopen(servers, "r");
-  if(!f)
-	{
-	  printf("server file error!\n");
-	  return 1;
-	}
-  char *str = malloc(256*sizeof(char));
-  char *istr = malloc(256*sizeof(char));
-  while (fgets(str, 255, f) != NULL)
-  {
-    servers_num++;
-    if (servers_num == 1)
-    {
-      to = malloc(sizeof(struct Server) * servers_num);
-    }
-    else
-    {
-      to = realloc(to, sizeof(struct Server) * servers_num);
-    }
-    istr = strtok(str, ":");
-    strcpy(to[servers_num-1].ip, istr);
-    istr = strtok(NULL, "\n");
-    ConvertStringToUI64(istr, &to[servers_num-1].port);
+  if (client.servers_num > k / 2) {
+    client.servers_num = k / 2;
+    printf("Warning: too much servers. Continue with %d\n", client.servers_num);
   }
-  fclose(f);
+#ifdef VERBOSE
+  printf("Got server list, len=%d\n", servers_num);
+#endif
 
-  uint64_t part = k/servers_num;
+  //Отправляем данные и ждем результатов
+  float block = (float)k / client.servers_num;
+  struct fac_server_list* servers_list_item = client.servers_list;
+  for (int i = 0; i < client.servers_num; i++) {
 
-  // TODO: work continiously, rewrite to make parallel
-  uint64_t begin;
-  uint64_t end;
-  uint64_t answer = 1;
+    struct fac_server* server = &servers_list_item->server;
+    /* Prepare package */
+    server->args.begin = (int)(block * (float)i) + 1;
+    server->args.end = (int)(block * (i + 1.f)) + 1;
+    server->args.mod = mod;
 
-  Arguments args[servers_num];
-  pthread_t threads[servers_num];
-  for (int i = 0; i < servers_num; i++)
-  {
-    struct hostent *hostname = gethostbyname(to[i].ip);
-    if (hostname == NULL)
-    {
-      fprintf(stderr, "gethostbyname failed with %s\n", to[i].ip);
+    // Подготовка сокета
+       struct sockaddr_in server_sockaddr;
+         server_sockaddr.sin_family = AF_INET;
+         server_sockaddr.sin_port = htons(server->port);
+         server_sockaddr.sin_addr.s_addr = *((unsigned long *)0);
+    if (!inet_aton(server->ip, &server_sockaddr.sin_addr)) {
+      printf("Error: cannot translate %s into int value\n", server->ip);
+      return -1;
+    }
+
+    // Сокет для каждого сервера
+    int sck = socket(AF_INET, SOCK_STREAM, 0);
+    if (sck < 0) {
+      fprintf(stderr, "Socket creation failed!\n");
+      exit(1);
+    }
+    server->socket = sck;
+#ifdef VERBOSE
+    printf("Socket [%s:%d] created\n", server->ip, server->port);
+#endif
+
+    // Коннектит сокет sck к address серверу */
+    if (connect(sck, (struct sockaddr *)&server_sockaddr, sizeof(struct sockaddr_in)) < 0) {
+      fprintf(stderr, "Connection failed\n");
       exit(1);
     }
 
-    args[i].server.sin_family = AF_INET;
-    args[i].server.sin_port = htons((uint64_t)to[i].port);
-    args[i].server.sin_addr.s_addr = *((unsigned long *)hostname->h_addr);
-
-    args[i].begin = 1 + i*part;
-    if (i == (servers_num - 1))
-    {
-      args[i].end = k;
+    // Отправляем данные
+    if (send(sck, &server->args, sizeof(struct fac_args), 0) < 0) {
+      fprintf(stderr, "Send failed\n");
+      exit(1);
     }
-    else
-    {
-      args[i].end = (i+1)*part;
-    }
-    args[i].mod = mod;
+#ifdef VERBOSE
+    printf("Data sent\n");
+#endif
 
-    pthread_create(&threads[i], NULL, SeverThread, (void *)&args[i]);
+    //Выполняем задание и получаем данные
+    if (pthread_create(&server->thread, NULL, (void*)server_recieve_task, (void*)server) != 0) {
+      printf("Error: cannot create thread to recieve from server [%s:%p]\n", server->ip, server->port);
+      return -1;
+    }
+
+    //Итерируем список
+    servers_list_item = servers_list_item->next;
   }
 
-  for (uint64_t i = 0; i <servers_num; i++)
-  {
-    pthread_mutex_lock(&mut);
-    int between_answer=0;
-    pthread_join(threads[i],(void**)&between_answer);
-    answer =  MultModulo(answer, between_answer, mod);
-    pthread_mutex_unlock(&mut);
-  }
-
-  printf("Answer: %llu\n", answer);
-
-  free(to);
-
+  finalize_tasks();
+  printf("Result: %lu\n", client.res);
   return 0;
 }
