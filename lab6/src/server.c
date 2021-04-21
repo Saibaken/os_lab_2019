@@ -21,9 +21,16 @@ struct FactorialArgs {
 };
 
 uint64_t Factorial(const struct FactorialArgs *args) {
-  uint64_t ans = args->begin;
-  for (uint64_t i = args->begin + 1; i < args->end; i++)         ////
-    ans = MultModulo(ans, i, args->mod);
+  uint64_t ans = 1;
+  
+  // TODO: your code here
+  
+  int i;
+  for (i = args->begin; i <= args->end; i++)
+  {
+      ans = MultModulo(ans, i, args->mod);
+  }
+
   return ans;
 }
 
@@ -54,10 +61,32 @@ int main(int argc, char **argv) {
       switch (option_index) {
       case 0:
         port = atoi(optarg);
-        if (port <= 0)
+        // TODO: your code here
+        if (port <= 1024)
         {
-          printf("Error port value\n");
-          return 1;
+            printf("port must be bigger than 1024\n");
+            return 1;
+        }
+        FILE* file;
+        bool correct = true;
+        if ((file = fopen("ports_list.txt", "r")) != NULL)
+        {
+            while (getc(file) != EOF)
+            {
+                fseek(file, -1, SEEK_CUR);
+                char buff[30];
+                fgets(buff, 29, file);
+                int read_port = atoi(buff);
+                if (read_port == port)
+                {
+                    correct = false;
+                }
+            }
+        }
+        if (!correct)
+        {
+            printf("Server with this port is already exist. Input another port.\n");
+            return 1;
         }
         break;
       case 1:
@@ -65,8 +94,8 @@ int main(int argc, char **argv) {
         // TODO: your code here
         if (tnum <= 0)
         {
-          printf("Error tnum value\n");
-          return 1;
+            printf("Number of threads must be positive number\n");
+            return 1;
         }
         break;
       default:
@@ -89,7 +118,7 @@ int main(int argc, char **argv) {
 
   int server_fd = socket(AF_INET, SOCK_STREAM, 0);
   if (server_fd < 0) {
-    fprintf(stderr, "Can not create server socket!");
+    fprintf(stderr, "Can not create server socket!\n");
     return 1;
   }
 
@@ -103,7 +132,7 @@ int main(int argc, char **argv) {
 
   int err = bind(server_fd, (struct sockaddr *)&server, sizeof(server));
   if (err < 0) {
-    fprintf(stderr, "Can not bind to socket!");
+    fprintf(stderr, "Can not bind to socket!\n");
     return 1;
   }
 
@@ -115,6 +144,22 @@ int main(int argc, char **argv) {
 
   printf("Server listening at %d\n", port);
 
+  // Запись в файл для чтения портов клиентом
+  FILE* file;
+  if ((file = fopen("ports_list.txt", "a")) != NULL)
+  {
+    char buff[30];
+    sprintf(buff, "%d", port);
+    fputs(buff, file);
+    fputc('\n', file);
+    fclose(file);
+  }
+  else
+  {
+    fprintf(stderr, "Error with opening file \"prots_lsit.txt\"\n");
+    return 1;
+  }
+  
   while (true) {
     struct sockaddr_in client;
     socklen_t client_len = sizeof(client);
@@ -151,15 +196,36 @@ int main(int argc, char **argv) {
       memcpy(&mod, from_client + 2 * sizeof(uint64_t), sizeof(uint64_t));
 
       fprintf(stdout, "Receive: %llu %llu %llu\n", begin, end, mod);
+      
+      // Определение необходимого количества потоков
+      int iterations = end - begin + 1;
+      int needed_threads = iterations < tnum ? iterations : tnum;
 
-      //struct FactorialArgs args[tnum];
-      float block = (float)(end - begin) / tnum;      ////
+      // Распределение по потокам
+      int end_count;
+      if (tnum >= iterations)
+      {
+        end_count = 1;
+      }
+      else
+      {
+        if (iterations % tnum)
+        {
+            end_count = iterations / tnum;
+        }
+        else
+        {
+            end_count = iterations / tnum - 1;
+        }
+      }
 
-      struct FactorialArgs args[(int)block];
+      int count = begin;
 
-      for (uint32_t i = 0; i < tnum; i++) {
-        args[i].begin = begin + (int)(block * (float)i);
-        args[i].end = begin + (int)(block * (i + 1.f));
+      struct FactorialArgs args[needed_threads];
+      for (uint32_t i = 0; i < needed_threads; i++) {
+        // TODO: parallel somehow
+        args[i].begin = count;
+        args[i].end = count + end_count <= end ? count + end_count : end;
         args[i].mod = mod;
 
         if (pthread_create(&threads[i], NULL, ThreadFactorial,
@@ -167,11 +233,12 @@ int main(int argc, char **argv) {
           printf("Error: pthread_create failed!\n");
           return 1;
         }
+
+        count = count + end_count + 1;
       }
 
-
       uint64_t total = 1;
-      for (uint32_t i = 0; i < tnum; i++) {
+      for (uint32_t i = 0; i < needed_threads; i++) {
         uint64_t result = 0;
         pthread_join(threads[i], (void **)&result);
         total = MultModulo(total, result, mod);
