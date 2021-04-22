@@ -63,8 +63,7 @@ int main(int argc, char **argv) {
         // TODO: your code here
         if (k <= 0)
         {
-            printf("k must be positive number.\n");
-            free(ports);
+            printf("Error: bad k value.\n");
             return 1;
         }
         break;
@@ -73,8 +72,7 @@ int main(int argc, char **argv) {
         // TODO: your code here
         if (mod <= 0)
         {
-            printf("mod must be positive number.\n");
-            free(ports);
+            printf("Error: bad mod value.\n");
             return 1;
         }
         break;
@@ -100,7 +98,7 @@ int main(int argc, char **argv) {
         }
         else
         {
-            printf("Error with opening file \"%s\".\n", servers);
+            printf("Error while opening file \"%s\".\n", servers);
             free(ports);
             return 1;
         }
@@ -155,6 +153,7 @@ int main(int argc, char **argv) {
             end_count = k / servers_num - 1;
         }
     }
+    int part = (int) (float)k /(float)servers_num;
     int current_begin = 1;
     uint64_t answer = 1;
     bool is_end = false; // Флаг для конца подсчета
@@ -188,9 +187,9 @@ int main(int argc, char **argv) {
 
     // TODO: for one server
     // parallel between servers
-    uint64_t begin = current_begin;
-    uint64_t end = current_begin + end_count <= k ? current_begin + end_count : k;
-    current_begin = end < k ? end + 1 : k;
+    uint64_t begin = 1 + i*part;
+    uint64_t end = ((i+1)*part) <= k ? ((i+1)*part) : k;
+    current_begin = end + 1 < k ? end + 1 : k;
 
     if (!is_end) // Для избежания ситуации, когда сервер вызывается для подсчета того, что уже посчитано
     {

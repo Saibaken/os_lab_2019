@@ -62,39 +62,39 @@ int main(int argc, char **argv) {
       case 0:
         port = atoi(optarg);
         // TODO: your code here
-        if (port <= 1024)
+        if (port < 0)
         {
-            printf("port must be bigger than 1024\n");
+            printf("Error: bad port value\n");
             return 1;
         }
-        FILE* file;
-        bool correct = true;
-        if ((file = fopen("ports_list.txt", "r")) != NULL)
-        {
-            while (getc(file) != EOF)
-            {
-                fseek(file, -1, SEEK_CUR);
-                char buff[30];
-                fgets(buff, 29, file);
-                int read_port = atoi(buff);
-                if (read_port == port)
-                {
-                    correct = false;
-                }
-            }
-        }
-        if (!correct)
-        {
-            printf("Server with this port is already exist. Input another port.\n");
-            return 1;
-        }
+       // FILE* file;
+      //  bool correct = true;
+       // if ((file = fopen("ports_list.txt", "r")) != NULL)
+        //{
+          //  while (getc(file) != EOF)
+            //{
+              //  fseek(file, -1, SEEK_CUR);
+                //char buff[30];
+               // fgets(buff, 29, file);
+               // int read_port = atoi(buff);
+                //if (read_port == port)
+               // {
+                 //   correct = false;
+               // }
+            //}
+     //   }
+       // if (!correct)
+      //  {
+      //      printf("Server with this port is already exist. Input another port.\n");
+      //      return 1;
+     //   }
         break;
       case 1:
         tnum = atoi(optarg);
         // TODO: your code here
         if (tnum <= 0)
         {
-            printf("Number of threads must be positive number\n");
+            printf("Error: bad tnum value\n");
             return 1;
         }
         break;
@@ -145,20 +145,20 @@ int main(int argc, char **argv) {
   printf("Server listening at %d\n", port);
 
   // Запись в файл для чтения портов клиентом
-  FILE* file;
-  if ((file = fopen("ports_list.txt", "a")) != NULL)
-  {
-    char buff[30];
-    sprintf(buff, "%d", port);
-    fputs(buff, file);
-    fputc('\n', file);
-    fclose(file);
-  }
-  else
-  {
-    fprintf(stderr, "Error with opening file \"prots_lsit.txt\"\n");
-    return 1;
-  }
+  //FILE* file;
+ // if ((file = fopen("ports_list.txt", "a")) != NULL)
+ // {
+  //  char buff[30];
+  //  sprintf(buff, "%d", port);
+  //  fputs(buff, file);
+  //  fputc('\n', file);
+  //  fclose(file);
+ // }
+  //else
+  //{
+  //  fprintf(stderr, "Error with opening file \"prots_lsit.txt\"\n");
+   // return 1;
+  //}
   
   while (true) {
     struct sockaddr_in client;
@@ -199,24 +199,17 @@ int main(int argc, char **argv) {
       
       // Определение необходимого количества потоков
       int iterations = end - begin + 1;
-      int needed_threads = iterations < tnum ? iterations : tnum;
+      int needed_threads = iterations < tnum ? iterations : tnum;       //Если вышло, что элементов меньше, чем потоков
 
       // Распределение по потокам
-      int end_count;
+      int part;
       if (tnum >= iterations)
       {
-        end_count = 1;
+        part = 1;
       }
       else
       {
-        if (iterations % tnum)
-        {
-            end_count = iterations / tnum;
-        }
-        else
-        {
-            end_count = iterations / tnum - 1;
-        }
+          part = (int)((float)iterations / (float)tnum);
       }
 
       int count = begin;
@@ -225,7 +218,7 @@ int main(int argc, char **argv) {
       for (uint32_t i = 0; i < needed_threads; i++) {
         // TODO: parallel somehow
         args[i].begin = count;
-        args[i].end = count + end_count <= end ? count + end_count : end;
+        args[i].end = count + part <= end ? count + part : end;
         args[i].mod = mod;
 
         if (pthread_create(&threads[i], NULL, ThreadFactorial,
@@ -234,7 +227,7 @@ int main(int argc, char **argv) {
           return 1;
         }
 
-        count = count + end_count + 1;
+        count = count + part + 1;
       }
 
       uint64_t total = 1;
