@@ -40,7 +40,7 @@ while (true) {
     case 0: {
       switch (option_index) {
       case 0:
-        memcpy(ip, optarg, strlen(optarg));
+        strcpy(ip, optarg);
         break;
       case 1:
         buff_size = atoi(optarg);
@@ -81,16 +81,16 @@ while (true) {
   struct sockaddr_in servaddr;
   struct sockaddr_in cliaddr;
 
-  if (argc != 2) {
-    printf("usage: client <IPaddress of server>\n");
-    exit(1);
-  }
+  //if (argc != 2) {
+   // printf("usage: client <IPaddress of server>\n");
+    //exit(1);
+  //}
 
   memset(&servaddr, 0, sizeof(servaddr));
   servaddr.sin_family = AF_INET;
   servaddr.sin_port = htons(server_port);
 
-  if (inet_pton(AF_INET, argv[1], &servaddr.sin_addr) < 0) {
+  if (inet_pton(AF_INET, ip, &servaddr.sin_addr) < 0) {
     perror("inet_pton problem");
     exit(1);
   }

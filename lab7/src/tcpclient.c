@@ -39,7 +39,7 @@ while (true) {
       switch (option_index) 
       {
       case 0:
-        memcpy(ip, optarg, strlen(optarg));
+        strcpy(ip, optarg);
         break;
       case 1:
         buff_size = atoi(optarg);
@@ -92,12 +92,12 @@ while (true) {
   memset(&servaddr, 0, SIZE);
   servaddr.sin_family = AF_INET;
 
-  if (inet_pton(AF_INET, argv[1], &servaddr.sin_addr) <= 0) {
+  if (inet_pton(AF_INET, ip, &servaddr.sin_addr) <= 0) {
     perror("bad address");
     exit(1);
   }
 
-  servaddr.sin_port = htons(atoi(argv[2]));
+  servaddr.sin_port = htons(server_port);
 
   if (connect(fd, (SADDR *)&servaddr, SIZE) < 0) {
     perror("connect");
